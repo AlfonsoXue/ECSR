@@ -1,0 +1,37 @@
+name: Build Windows app
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Test (mock site, real Edge)
+        run: python -m pytest tests -q
+      - name: GUI smoke test
+        run: python main.py --selftest
+      - name: Build exe
+        run: python -m PyInstaller --noconfirm --clean --windowed --name ECSRTool --collect-all playwright main.py
+      - name: Smoke test built exe
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath dist\ECSRTool\ECSRTool.exe -ArgumentList "--selftest" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "selftest exit code $($p.ExitCode)" }
+      - name: Add docs to package
+        shell: pwsh
+        run: Copy-Item README.md, start_edge_debug.bat dist\ECSRTool\
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ECSRTool-windows
+          path: dist/ECSRTool

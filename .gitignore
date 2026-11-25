@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+build/
+dist/
+*.spec
+.venv/
+# 公司資料不進版控
+*.xlsx
+*.xlsm
+*.mp4
+*_摘要進度.json
