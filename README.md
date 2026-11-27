@@ -1,11 +1,21 @@
 # ECSR 案件摘要小幫手
 
-匯入每月的 Excel（`ECSR` 頁籤）後，自動在 **Customer Service Report Information System** 逐筆查詢案件，
-照人工作業的流程檢查並摘要，最後把結果寫回一份新的 Excel。
+匯入 **MINet II 電報匯出檔**（`MINetII_Export.xlsx`）後，從 K 欄 Subject 解析出所有與 `TPEWTBR` 有關的 ECSR 案號，
+自動在 **Customer Service Report Information System** 逐筆查詢，照人工作業的流程檢查並摘要，最後輸出一份結果 Excel。
+
+## 匯入檔案的解析規則
+
+- 只看收件地址（Receive Address / Send To / Copy To / Blind Copy）含 `TPEWTBR` 的電報。
+- 從 **Subject** 取出案號，例如 `ECSR/TPEWS/26011926-IR001 IS WAITING FOR UR HANDLING -BR0056 TPEORD`
+  → 案號 `ECSR/TPEWS/26011926`、IR `IR001`、航班 `BR0056 TPEORD`。`Urgent`、`MODIFIED` 開頭的也一樣。
+- 催辦通知（`Customer Service Report is waiting for your handling…`、`BR-IR IS WAITING…`）與 `Category Advice`（分類通知）
+  的主旨沒有案號，改從內文（Text）取。
+- 同一案號的多封電報合併成一筆，記錄最新電報時間、電報數、電報類型與提到的 IR 編號。
+- 也仍可匯入舊格式（含 `ECSR` 頁籤的月報），程式會自動判斷。
 
 ## 它會做什麼
 
-對 `ECSR` 頁籤「CSR NO.」欄的每一筆案號：
+對每一個案號：
 
 1. 在 CSR 查詢畫面的 **CSR Ref No** 填入案號（例如 `ECSR / TPEWS / 26008261`）→ **Search** → 點開案件
 2. 切到 **Related Station**：檢查是否出現 `TPEWT`（三個區塊都算，並記錄是在哪一區）
@@ -27,7 +37,7 @@
 
 ## 使用步驟
 
-1. **① 匯入 Excel**：選擇含 `ECSR` 頁籤的檔案（原始檔不會被修改）。
+1. **① 匯入 Excel**：選擇 MINet 電報匯出檔（原始檔不會被修改），清單會列出解析到的案號。
 2. **② 開啟瀏覽器**：工具會開一個專用的 Edge 視窗。第一次請在裡面登入系統，
    並停在看得到 **CSR Ref No** 欄位的查詢畫面（登入狀態會保留，之後通常不用重登）。
 3. **③ 開始**：工具會先確認畫面正確，再逐筆處理。過程中可「暫停 / 繼續 / 停止」，
@@ -42,11 +52,11 @@
 
 | 檔案 | 內容 |
 |---|---|
-| `原檔名_摘要結果.xlsx` | 原檔的複本，`ECSR` 頁籤右側多出：處理結果、Related Station 有無 TPEWT、案件摘要、最新 IR、回覆狀態、最新處理狀態摘要、備註、處理時間；另有 `ECSR原文` 頁籤保存 Outline 與 IR 全文 |
+| `原檔名_摘要結果.xlsx` | 每個案號一列（案號、最新電報時間、電報數、航班、電報類型、提到的 IR），後面接：處理結果、Related Station 有無 TPEWT、案件摘要、最新 IR、回覆狀態、最新處理狀態摘要、備註、處理時間；另有 `ECSR原文` 頁籤保存 Outline 與 IR 全文 |
 | `原檔名_摘要進度.json` | 續跑用的進度檔 |
 
-處理結果的意思：`完成`、`查無案件`（查詢結果沒有這個案號）、`略過`（案號格式不完整，例如被截斷的
-`B7ECSR/TPEWS/260118`）、`錯誤`（逾時或畫面異常，下次會自動重跑；連續 3 筆錯誤會自動停止）。
+處理結果的意思：`完成`、`查無案件`（查詢結果沒有這個案號）、`略過`（立榮的 `B7ECSR/…` 案號：
+查詢畫面第一格固定為 `ECSR` 時無法輸入，需人工查詢）、`錯誤`（逾時或畫面異常，下次會自動重跑；連續 3 筆錯誤會自動停止）。
 
 ## 摘要方式與資料安全
 

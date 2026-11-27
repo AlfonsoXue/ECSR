@@ -11,7 +11,10 @@ from typing import Iterable, Optional
 
 from .models import IRRow
 
-REF_RE = re.compile(r"^([A-Z0-9]+)/([A-Z0-9]{3,6})/(\d{8})$")
+REF_RE = re.compile(r"^([A-Z0-9]*ECSR)/([A-Z0-9]{3,6})/(\d{6,8})$")
+# 電報主旨 / 內文中的案號，可帶 IR 編號：ECSR/TPEWS/26011926-IR001、B7ECSR/TPEWS/260119
+MSG_REF_RE = re.compile(r"(?<![A-Z0-9])((?:[A-Z0-9]{2})?ECSR/[A-Z0-9]{3,6}/\d{6,8})(?:-(IR\d{2,4}))?")
+FLIGHT_RE = re.compile(r"-\s*((?:BR|B7)\d{3,4})?\s*([A-Z]{6})?\s*$")
 DATE_RE = re.compile(r"\d{4}/\d{1,2}/\d{1,2}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?")
 DEPT_RE = re.compile(r"^[A-Z]{3}[A-Z0-9]{2}$")
 IR_NO_RE = re.compile(r"^IR\d{2,4}$", re.I)
@@ -28,6 +31,30 @@ def parse_ref(ref: str) -> Optional[tuple]:
     """'ECSR/TPEWS/26008261' -> ('ECSR', 'TPEWS', '26008261')；格式不符回傳 None。"""
     m = REF_RE.match((ref or "").strip().upper())
     return m.groups() if m else None
+
+
+def classify_subject(subject: str, has_ir: bool) -> str:
+    """電報類型（由主旨判斷）。"""
+    s = (subject or "").upper()
+    kinds = []
+    if "URGENT" in s:
+        kinds.append("Urgent")
+    if "MODIFIED" in s:
+        kinds.append("MODIFIED")
+    if "NOTREPLY" in s or "STILL WAITING" in s or s.startswith(("BR-CSR IS", "BR-IR IS")) \
+            or "CUSTOMER SERVICE REPORT IS WAITING" in s:
+        kinds.append("催辦")
+    elif "CATEGORY ADVICE" in s:
+        kinds.append("分類通知")
+    else:
+        kinds.append("IR" if has_ir else "CSR")
+    return " ".join(kinds)
+
+
+def subject_flight(subject: str) -> str:
+    """'… IS WAITING FOR UR HANDLING -BR0056 TPEORD' -> 'BR0056 TPEORD'。"""
+    m = FLIGHT_RE.search(" ".join((subject or "").split()))
+    return " ".join(x for x in m.groups() if x) if m else ""
 
 
 def parse_dt(s: str) -> Optional[datetime]:

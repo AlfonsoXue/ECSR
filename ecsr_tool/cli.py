@@ -42,7 +42,7 @@ def main(argv=None) -> int:
     if a.no_ai:
         cfg.ai_enabled = False
 
-    cases = excel_io.load_cases(a.xlsx, cfg.sheet_name)
+    cases = excel_io.load_cases(a.xlsx, cfg.sheet_name, cfg.address)
     bot = EcsrBot(cfg)
     try:
         bot.open()

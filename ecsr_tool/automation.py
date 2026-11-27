@@ -283,7 +283,7 @@ class EcsrBot:
         res = CaseResult(row=row, ref=ref)
         parts = parsing.parse_ref(ref)
         if not parts:
-            res.state, res.note = ST_SKIPPED, "案號格式不完整（應為 ECSR/XXXXX/8碼數字），請人工確認"
+            res.state, res.note = ST_SKIPPED, "案號格式無法辨識，請人工確認"
             return res
         prefix, station, number = parts
         target = self.cfg.target_station

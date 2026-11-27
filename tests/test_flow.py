@@ -15,7 +15,7 @@ from ecsr_tool.runner import Runner, pending_cases
 from . import mock_site
 
 REFS = ["ECSR/TPEWS/26000001", "ECSR/TPEWS/26000002", "ECSR/BKKKP/26000003",
-        "ECSR/TPEWS/26999999", "B7ECSR/TPEWS/260118"]
+        "ECSR/TPEWS/26999999", "B7ECSR/TPEWS/260118", "ECSR/BAD"]
 
 
 def _chromium():
@@ -88,7 +88,8 @@ def test_full_flow(server, tmp_path, variant, monkeypatch):
     assert r3.ir_no == "IR001" and r3.reply_status.startswith("待回覆") and r3.ir_text
 
     assert res[REFS[3]].state == ST_NOT_FOUND
-    assert res[REFS[4]].state == ST_SKIPPED
+    assert res[REFS[4]].state == ST_SKIPPED and "前綴" in res[REFS[4]].note   # 立榮 B7ECSR
+    assert res[REFS[5]].state == ST_SKIPPED
 
     wb = load_workbook(runner.out_xlsx)
     ws = wb["ECSR"]
@@ -99,3 +100,45 @@ def test_full_flow(server, tmp_path, variant, monkeypatch):
     assert wb["ECSR原文"].max_row == 3 and "A-01" in wb.sheetnames
     # 續跑：全部完成後不應再有待處理
     assert pending_cases(cases, excel_io.load_progress(runner.progress_path)) == []
+
+
+def test_minet_export(tmp_path):
+    """MINet II 電報匯出：由 Subject 解析與 TPEWTBR 有關的案號並合併。"""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "MINetII_Export"
+    ws.append(["Type", "MSG ID", "SITA ID", "DateTime", "Send User", "Send Address", "Receive Address",
+               "Send To", "Copy To", "Blind Copy", "Subject", "Text", "Priority"])
+    def msg(when, rcv, to, subj, text=""):
+        ws.append(["RCV", "1", "1", when, "APECSR", "TPEWSBR", rcv, to, None, None, subj, text, "QD"])
+    msg("2026/11/27 11:39", "TPEWTBR", "TPEWSBR,TPEWTBR",
+        "ECSR/TPEWS/26000001-IR004 IS WAITING FOR UR HANDLING -BR0056 TPEORD\n")
+    msg("2026/11/26 09:00", "TPELZBR", "TPEWSBR, TPEWTBR,TPELZBR",
+        "Urgent ECSR/TPEWS/26000001 IS WAITING FOR UR HANDLING -BR0056\nTPEORD\n")
+    msg("2026/11/27 08:00", "TPELZBR", "TPEWSBR,TPELZBR",                    # 與 TPEWTBR 無關
+        "ECSR/TPEWS/26000002 IS WAITING FOR UR HANDLING -BR0012 TPELAX\n")
+    msg("2026/11/27 07:32", "TPEWTBR", "TPEWTBR",                            # 催辦：案號在內文
+        "Customer Service Report is waiting for your handling. (IR_NotReplyIR)\n",
+        "ATTN TPEWT\nRE ECSR/BKKKP/26000003-IR001 - BR0068 BKKTPE\nTHIS IR IS STILL WAITING")
+    msg("2026/11/24 10:42", "TPEWTBR", "TPEWSBR,XMNKPB7,TPEWTBR",
+        "Urgent B7ECSR/TPEWS/260119 IS WAITING FOR UR HANDLING -B70512 XMNTSA\n")
+    msg("2026/11/27 12:19", "TPEWTBR", "TPEWTBR", "MVT BR708 27NOV CAN TPE DEP")
+    msg("2026/11/27 12:20", "TPEWTBR", "TPEWTBR", None, "MVT")
+    p = str(tmp_path / "MINetII_Export.xlsx")
+    wb.save(p)
+
+    assert excel_io.detect_format(p) == excel_io.FMT_MINET
+    cases = excel_io.load_cases(p, address="TPEWTBR")
+    assert [c.ref for c in cases] == ["ECSR/TPEWS/26000001", "ECSR/BKKKP/26000003", "B7ECSR/TPEWS/260119"]
+    c = cases[0]
+    assert (c.msg_count, c.date, c.flight, c.irs) == (2, "2026/11/27 11:39", "BR0056 TPEORD", "IR004")
+    assert set(c.kinds.split()) == {"IR", "Urgent", "CSR"}
+    assert cases[1].kinds == "催辦" and cases[1].irs == "IR001"
+    assert cases[2].flight == "B70512 XMNTSA"
+
+    from ecsr_tool.models import CaseResult
+    out, _ = excel_io.output_paths(p)
+    res = CaseResult(row=2, ref=cases[1].ref, state=ST_DONE, ir_no="IR001", ir_text="t", ir_summary="s")
+    excel_io.write_results(p, out, "ECSR", {res.ref: res}, "TPEWT", "TPEWTBR")
+    ws = load_workbook(out)["ECSR"]
+    assert ws.max_row == 4 and ws.cell(3, 1).value == cases[1].ref and ws.cell(3, 7).value == ST_DONE

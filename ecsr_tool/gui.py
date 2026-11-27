@@ -97,6 +97,7 @@ class App(tk.Tk):
         self.worker = Worker(self.cfg, self.ui)
         self.worker.start()
         self.xlsx = ""
+        self.fmt = excel_io.FMT_ECSR
         self.cases: list = []
         self.results: dict = {}
         self.done_count = self.total = 0
@@ -106,7 +107,7 @@ class App(tk.Tk):
         self.after(100, self._pump)
         self._log(f"目標單位：{self.cfg.target_station}　｜　AI 摘要："
                   + ("啟用" if self.cfg.ai_enabled else "未啟用（只節錄原文，資料不外送）"))
-        self._log("步驟：① 匯入 Excel　② 開啟瀏覽器並登入、停在 CSR 查詢畫面　③ 開始")
+        self._log("步驟：① 匯入 Excel（MINet 電報匯出檔）　② 開啟瀏覽器並登入、停在 CSR 查詢畫面　③ 開始")
 
     # ------------------------------------------------------------ 版面
     def _build(self) -> None:
@@ -184,16 +185,27 @@ class App(tk.Tk):
 
     # ------------------------------------------------------------ 動作
     def import_xlsx(self) -> None:
-        path = filedialog.askopenfilename(title="選擇含 ECSR 頁籤的 Excel",
+        path = filedialog.askopenfilename(title="選擇 MINet 電報匯出檔，或含 ECSR 頁籤的 Excel",
                                           filetypes=[("Excel", "*.xlsx *.xlsm")])
         if not path:
             return
         try:
-            cases = excel_io.load_cases(path, self.cfg.sheet_name)
+            fmt = excel_io.detect_format(path)
+            cases = excel_io.load_cases(path, self.cfg.sheet_name, self.cfg.address)
         except Exception as e:
             messagebox.showerror(APP_NAME, f"讀取失敗：{e}")
             return
-        self.xlsx, self.cases = path, cases
+        if not cases:
+            messagebox.showinfo(APP_NAME, f"檔案裡找不到與 {self.cfg.address} 有關的 ECSR 案號。"
+                                if fmt == excel_io.FMT_MINET else "ECSR 頁籤沒有案號。")
+            return
+        self.xlsx, self.cases, self.fmt = path, cases, fmt
+        minet = fmt == excel_io.FMT_MINET
+        for key, title in (("date", "最新電報時間" if minet else "電報日期"),
+                           ("pic", "電報數" if minet else "PIC"), ("stn", "航班" if minet else "場站")):
+            self.tree.heading(key, text=title)
+        self.tree.column("date", width=125 if minet else 90)
+        self.tree.column("stn", width=115 if minet else 55)
         self.results = excel_io.load_progress(excel_io.output_paths(path)[1])
         self.tree.delete(*self.tree.get_children())
         for n, c in enumerate(cases, 1):
@@ -204,7 +216,11 @@ class App(tk.Tk):
                                      + (f"（先前已處理 {done} 筆）" if done else ""), foreground="#000")
         self.var_from.set("1")
         self.var_to.set(str(len(cases)))
-        self._log(f"已匯入 {path}：{self.cfg.sheet_name} 頁籤 {len(cases)} 筆。")
+        if minet:
+            self._log(f"已匯入 {path}（MINet 電報匯出）：收件含 {self.cfg.address} 的電報共 "
+                      f"{sum(c.msg_count for c in cases)} 封，整理出 {len(cases)} 個 ECSR 案號。")
+        else:
+            self._log(f"已匯入 {path}：{self.cfg.sheet_name} 頁籤 {len(cases)} 筆。")
 
     def _row(self, n: int, c, res: "CaseResult | None") -> tuple:
         state = rel = ir = reply = ""
@@ -213,6 +229,8 @@ class App(tk.Tk):
             rel = "" if res.related_found is None else ("有" if res.related_found else "無")
             ir = f"{res.ir_no} {res.ir_date}" if res.ir_no else ("無" if res.ir_found is False else "")
             reply = res.reply_status or res.note
+        if c.msg_count:
+            return (n, c.ref, c.date, c.msg_count, c.flight, state or ST_PENDING, rel, ir, reply)
         return (n, c.ref, c.date, c.pic, c.station, state or ST_PENDING, rel, ir, reply)
 
     @staticmethod
@@ -260,7 +278,8 @@ class App(tk.Tk):
             return
         out = excel_io.output_paths(self.xlsx)[0]
         try:
-            excel_io.write_results(self.xlsx, out, self.cfg.sheet_name, self.results, self.cfg.target_station)
+            excel_io.write_results(self.xlsx, out, self.cfg.sheet_name, self.results,
+                                   self.cfg.target_station, self.cfg.address)
             self._log(f"已輸出：{out}")
         except PermissionError:
             messagebox.showwarning(APP_NAME, "結果檔正被 Excel 開啟，請先關閉。")
@@ -395,6 +414,7 @@ class SettingsDialog(tk.Toplevel):
     FIELDS = [("start_url", "系統網址（開啟瀏覽器時前往）", 52),
               ("sheet_name", "Excel 頁籤名稱", 14),
               ("target_station", "目標單位代碼", 14),
+              ("target_address", "電報地址（留白 = 單位代碼 + BR）", 14),
               ("timeout_sec", "每步等待上限（秒）", 8),
               ("delay_sec", "每筆之間停頓（秒）", 8),
               ("browser_channel", "瀏覽器（msedge / chrome）", 14),
@@ -454,6 +474,7 @@ class SettingsDialog(tk.Toplevel):
         c.start_url = self.vars["start_url"].get().strip()
         c.sheet_name = self.vars["sheet_name"].get().strip() or "ECSR"
         c.target_station = self.vars["target_station"].get().strip().upper() or "TPEWT"
+        c.target_address = self.vars["target_address"].get().strip().upper()
         c.browser_channel = self.vars["browser_channel"].get().strip()
         c.cdp_url = self.vars["cdp_url"].get().strip()
         c.ai_enabled = self.var_ai.get()

@@ -26,7 +26,7 @@ class Runner:
         excel_io.save_progress(self.progress_path, self.results)
         try:
             excel_io.write_results(self.xlsx_path, self.out_xlsx, self.cfg.sheet_name,
-                                   self.results, self.cfg.target_station)
+                                   self.results, self.cfg.target_station, self.cfg.address)
             return True
         except PermissionError:
             self.log("⚠ 結果檔正被 Excel 開啟，無法寫入；請關閉後按「重新輸出結果」。（進度已另外保存）")

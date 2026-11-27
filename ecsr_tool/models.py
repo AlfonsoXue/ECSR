@@ -18,6 +18,13 @@ class Case:
     pic: str = ""
     station: str = ""
     status: str = ""
+    # MINet II 電報匯出格式才有
+    msg_count: int = 0       # 相關電報數
+    flight: str = ""         # 例 BR0018 TPESFO
+    kinds: str = ""          # 電報類型：新案 / IR / Urgent / MODIFIED / 催辦…
+    irs: str = ""            # 電報中提到的 IR 編號
+    _kinds: list = field(default_factory=list, repr=False)
+    _irs: list = field(default_factory=list, repr=False)
 
 
 @dataclass

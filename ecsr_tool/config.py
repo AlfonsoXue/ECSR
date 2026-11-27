@@ -27,6 +27,7 @@ class Config:
     # --- 流程 ---
     sheet_name: str = "ECSR"
     target_station: str = "TPEWT"
+    target_address: str = ""             # 電報地址，留白 = 目標單位 + BR（TPEWTBR）
     timeout_sec: int = 40                # 每一步等待畫面的上限
     delay_sec: float = 1.0               # 每筆案件之間的停頓
     # --- 摘要 ---
@@ -54,6 +55,10 @@ class Config:
         self.path().write_text(
             json.dumps(asdict(self), ensure_ascii=False, indent=2), encoding="utf-8"
         )
+
+    @property
+    def address(self) -> str:
+        return (self.target_address.strip() or self.target_station.strip() + "BR").upper()
 
     @property
     def profile_dir(self) -> str:
